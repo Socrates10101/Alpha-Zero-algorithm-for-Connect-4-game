@@ -134,4 +134,5 @@ def onevsonehuman(budget, whostarts):
 #set the number of sims the NN player gets:
 sim_number = 200
 # set who starts, 'human' or 'computer'
-onevsonehuman(200, 'human')
+if __name__ == '__main__':
+    onevsonehuman(200, 'human')
