@@ -1,0 +1,333 @@
+% PDFLaTeX‑compatible version of the original uplatex document
+% Compile with: pdflatex → bibtex (if needed) → pdflatex → pdflatex
+% Japanese is handled via the CJKutf8 package.
+
+\documentclass[a4paper,12pt]{article}
+
+% --- Encoding & fonts ---------------------------------------------------------
+\usepackage[utf8]{inputenc}  % source is UTF‑8
+\usepackage[T1]{fontenc}     % 8‑bit font encoding
+\usepackage{CJKutf8}         % Japanese support for pdfLaTeX
+
+% --- Math & symbols -----------------------------------------------------------
+\usepackage{amsmath, amssymb, bm}
+
+% --- Graphics & tables ---------------------------------------------------------
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+
+\lstset{
+  language=Python,                   % デフォルト言語
+  basicstyle=\ttfamily\small,        % 等幅フォント＋サイズ
+  commentstyle=\itshape\color{gray}, % コメントの色など
+  keywordstyle=\bfseries\color{blue},
+  stringstyle=\color{red!60!brown},
+  frame=single,                      % 外枠
+  numbers=left, numberstyle=\tiny,
+  breaklines=true,                   % 長い行を折り返す
+}
+
+% --- Meta information ---------------------------------------------------------
+\title{システム論　レポート\\AlphaZero の仕組みと\\モンテカルロ木探索}
+\author{学籍番号：J4230031\\今井\,冴生}
+\date{2025年6月6日}
+
+% ==============================================================================
+\begin{document}
+\begin{CJK}{UTF8}{min} % Start Japanese environment
+
+\maketitle
+\thispagestyle{empty}
+
+% ------------------------------------------------------------------------------
+\section*{0.~トピック選定理由}
+私はエンジニアであり、将棋をはじめとするボードゲームを趣味としている。2010 年代に登場した \textit{AlphaGo} および \textit{AlphaZero} の衝撃は今なお鮮明だ。本レポートでは AlphaZero がどのように機能するのかを掘り下げ，現在盛んに議論されている ``AI'' との違いを学ぶことを目的としてこのテーマを選択した。
+
+\section*{1.~はじめに}
+近年，ディープラーニングと探索アルゴリズムの融合により，囲碁・将棋・チェスなどの完全情報二人零和ゲームで人間トップを凌駕する AI が誕生している。その代表例が DeepMind 社の \textit{AlphaGo}（2016）と後継の \textit{AlphaZero}（2017）である。AlphaZero はモンテカルロ木探索（Monte Carlo Tree Search; MCTS）とディープニューラルネットワークを自己対戦型強化学習で有機的に統合し，人間の棋譜を一切用いずに，わずか数時間で世界最強クラスへ到達した。
+
+\section*{2.~モンテカルロ木探索（MCTS）}
+\subsection*{2.1 基本手順}
+MCTS は木構造の探索と確率的シミュレーションを組み合わせた汎用アルゴリズムで，以下の 4 ステップを繰り返す。
+\begin{enumerate}
+  \item \textbf{Selection（選択）}: 既に展開済みの節点から，評価値と訪問回数に基づいて子ノードを選択する。
+  \item \textbf{Expansion（展開）}: 未訪問の着手を 1 つ選び，新規ノードを生成する。
+  \item \textbf{Simulation（シミュレーション）}: そのノードから終局までプレイアウトし，勝敗（報酬）を得る。
+  \item \textbf{Backpropagation（帰納）}: 得られた報酬を経路上のノードに逆伝播させ，統計値を更新する。
+\end{enumerate}
+
+\subsection*{2.2 UCT と PUCT}
+従来の MCTS では UCB1 を木探索に拡張した \textit{UCT} が用いられる。AlphaZero はニューラルネットが出力する事前確率 $P(s,a)$ を組み込んだ \textit{PUCT} を導入し，選択評価式を
+\begin{equation}
+U(s,a)=Q(s,a)+C_{\mathrm{puct}} \, P(s,a)\,\frac{\sqrt{N(s)}}{1+N(s,a)}
+\end{equation}
+で定義する。ここで $N(s)$ は状態 $s$ の訪問回数，$N(s,a)$ は手 $a$ の訪問回数である。定数 $C_{\mathrm{puct}}$ は探索と活用のトレードオフを調整し，AlphaZero では通常 $1.5\text{--}2.5$ に設定される。
+
+\section*{3.~AlphaZero のアーキテクチャ}
+AlphaZero はポリシー $\bm{\pi}_{\theta}(s)$ とバリュー $v_{\theta}(s)$ を同時に出力する畳み込み残差ネットワーク（40--60 層）を採用する。入力には盤面の平面データ（過去 $T$ 手の着手履歴，合法手マスク，手番情報など）を $C\times H\times W$ テンソルとして符号化する。
+
+\begin{itemize}
+  \item \textbf{ポリシーヘッド}: $1\times1$ 畳み込み $\rightarrow$ BatchNorm $\rightarrow$ ReLU $\rightarrow$ 全結合で合法手ごとの確率分布を出力。
+  \item \textbf{バリューヘッド}: 平均プーリング $\rightarrow$ 全結合 $\rightarrow$ ReLU $\rightarrow$ 全結合 $\rightarrow$ $\tanh$ で $[-1,1]$ のスカラーを出力。
+\end{itemize}
+
+ネットワークが出力した $P(s,\cdot)$ と $v(s)$ を PUCT に組み込み，探索木をより精緻に評価する。
+
+\section*{4.~自己対戦型強化学習プロセス}
+1 ゲーム（エピソード）は次で構成される。
+\begin{enumerate}
+  \item MCTS を $n_{\text{sim}}$ 回（例：800 回）実行し，根ノードでの訪問回数分布 $\bm{\pi}_t$ を得る。
+  \item 温度パラメータ $\tau$ を用いて確率的に着手を選択（序盤は $\tau=1$，終盤は $\tau\to0$）。
+  \item 終局まで 1--2 を繰り返す。
+\end{enumerate}
+各時刻 $t$ について $(s_t,\bm{\pi}_t,z)$ をリプレイバッファに格納し，次の損失関数でバッチ学習を行う。
+\begin{equation}
+\mathcal{L}=\bigl(z-v_{\theta}(s)\bigr)^{2}-\bm{\pi}_t\cdot\log \bm{\pi}_{\theta}(s)+\lambda\lVert\theta\rVert_{2}^{2}.
+\end{equation}
+第 1 項はバリュー回帰，第 2 項はポリシーの交差エントロピー，第 3 項は $L_2$ 正則化である。AlphaZero では数千台の TPU を用い，数千万局の自己対戦データを数時間で収集・学習した。
+
+\section*{5.~MCTS と AlphaZero の統合}
+\subsection*{5.1 Root Parallelism とバッチ処理}
+ネットワーク推論を高速化するため，複数シミュレーションをバッチ化して根ノードから並列展開する \textit{Root Parallel MCTS} を採用する。探索木のノード評価はワーカープールで分散実行される。
+
+\subsection*{5.2 探索多様性のためのノイズ付与}
+探索の局所最適化を防ぐため，根ノードでは Dirichlet ノイズ（囲碁では $\alpha=0.3$ など）を prior と混合し，多様性を確保する。
+
+\section*{6.~実験結果と性能評価}
+\begin{table}[htbp]
+  \centering
+  \caption{AlphaZero の性能比較}
+  \begin{tabular}{lcccc}
+    \toprule
+    ゲーム & 学習時間 & 対戦相手 & 勝率 & 備考\\
+    \midrule
+    囲碁 19 路 & 40 TPU $\times$ 20 時間 & AlphaGo Zero & 60\% & pachi 3$\times$3 に 100\%\\
+    チェス      & 64 TPU $\times$ 9 時間  & Stockfish 8  & 1550--286--190$^{*}$ & 引き分け含む\\
+    将棋        & 64 TPU $\times$ 12 時間 & Elmo (2017) & 90\% & ---\\
+    \bottomrule
+  \end{tabular}
+  \label{tab:results}
+\end{table}
+
+AlphaZero は Stockfish や Elmo など当時のトップエンジンを短時間で大きく上回り，チェスにおける \textit{h\,-パーン攻撃} など，人間未踏の新戦法を提案した。
+
+\section*{7.~AlphaZero と大規模言語モデル（LLM）の比較}
+\subsection*{7.1 学習パラダイム}
+\begin{table}[htbp]
+  \centering
+  \caption{AlphaZero と LLM の学習パラダイム比較}
+  \begin{tabular}{lll}
+    \toprule
+    観点 & AlphaZero & LLM \\
+    \midrule
+    教師信号 & 自己対戦の勝敗（強化学習） & 次トークン予測（自己教師あり）+ RLHF\\
+    データ生成 & モデル自身がゲームをプレイして生成 & Web・書籍・コードなど大規模静的コーパス\\
+    追加フィードバック & MCTS 統計 & 人間フィードバック，合成データ\\
+    \bottomrule
+  \end{tabular}
+  \label{tab:paradigm}
+\end{table}
+
+\subsection*{7.2 アーキテクチャの違い}
+\begin{itemize}
+  \item \textbf{AlphaZero}: 盤面を平面画像として扱う CNN（ResNet）．局所特徴抽出と平行移動不変性が鍵。
+  \item \textbf{LLM}: トランスフォーマを用い，自己注意機構で長距離依存をモデリング。
+\end{itemize}
+
+\subsection*{7.3 推論時の探索手法}
+\begin{itemize}
+  \item \textbf{AlphaZero}: MCTS（数百～数千シミュレーション）が本体。
+  \item \textbf{LLM}: Greedy／Top-$p$ 生成が標準。Beam Search や Tree-of-Thought など追加探索も研究中。
+\end{itemize}
+
+\subsection*{7.4 計算資源とデータ効率}
+AlphaZero は数千万局（≒ 数百億状態・アクション）で超人的強さに到達する一方，LLM は数兆トークンの事前学習が必要だが 1 トークンあたりの演算量は軽い。
+
+\subsection*{7.5 汎用性・タスク適応}
+AlphaZero の汎用性は ``ゲーム間一般化''，LLM の汎用性は ``タスク間一般化'' に現れる。
+
+\subsection*{7.6 相互補完と将来展望}
+\begin{itemize}
+  \item \textbf{検索付き LLM}: MCTS を LLM の出力候補探索に組み込み論理一貫性を高める研究が進行中。
+  \item \textbf{戦略言語化}: LLM を AlphaZero の解説モデルとして使用し，人間可読な戦略説明を生成する試み。
+\end{itemize}
+今後はモデルベース RL や自己監督符号化の統合が鍵となる。
+
+\section*{8.~AlphaZero の発展と応用事例}
+AlphaZero の思想は \textit{MuZero}（2019）へ発展し，環境遷移モデルを同時学習できる汎用アルゴリズムとなった。現在はマルチエージェント協調，分子設計，組合せ最適化などへの応用が進んでいる。
+
+\section*{9.~考察と今後の課題}
+AlphaZero は計算資源を大量投入できる研究機関だからこそ実現した側面がある。ハードウェア依存を緩和する軽量化（モデル蒸留，枝刈り）や，ポーカー・\textit{StarCraft~II} など不完全情報ゲームへの拡張が課題だ。また，MCTS+NN 枠組みは分岐爆発を抑制できるが，長手計画（囲碁の劫，チェスの \textit{zugzwang}）では探索深度が不足する場合がある。
+
+\section*{10.~まとめ}
+本レポートでは AlphaZero の構成要素を分解し，MCTS とニューラルネットワークの相乗効果を中心に論じた。PUCT による先読み探索と自己対戦強化学習のループは，ドメイン固有知識に依存しない汎用的な知能獲得手法として多領域に波及している。今後は計算効率の向上と部分情報環境への適応が鍵となり，ゲーム AI を超えた社会課題解決への応用が期待される。
+\section*{11. Alpha-Zero アルゴリズムによるコネクト4の実装}
+\label{sec:connect4-az}
+
+\subsection*{11.1.  アルゴリズムの全体構造}
+
+最後に実際に実装して触ってみる。好きなボードゲームの3D-connect4に関して実装してみる。本実装では次の 4 ステップを
+繰り返すことで学習を進める。以下実装の抜粋。
+
+\begin{enumerate}
+  \item \textbf{自己対戦によるデータ生成}
+  \item \textbf{ニューラルネットワークの学習}
+  \item \textbf{改善の評価（トーナメント）}
+  \item \textbf{優れたモデルのみを保持}
+\end{enumerate}
+
+\begin{lstlisting}[caption={\texttt{Main.py} の主要ループ（69--157 行目，抜粋）}]
+
+while i < config.max_iterations:
+    # 1. 自己対戦によるデータ生成
+    use_this_data, prev_data_seen = main_functions.generate_self_play_data(
+        best_player_so_far, sim_number, dataseen, i)
+
+    # 2. ニューラルネットワークの学習
+    main_functions.improve_model_resnet(
+        best_player_so_far, use_this_data, total_improved)
+
+    # 3. 改善の評価（トーナメント）
+    winp1, winp2, draws, ratio = main_functions.play_v1_against_v2(
+        best_player_so_far, previous_best, config.tournamentloop)
+
+    # 4. 成績が閾値を超えたモデルのみを保存
+    if (winp1 + draws/2) / (winp1 + winp2 + draws) >= config.threshold:
+        torch.save(best_player_so_far.state_dict(),
+                   './best_model_resnet.pth')
+\end{lstlisting}
+
+%--------------------------------------------------
+\subsection*{11.2 ニューラルネットワークアーキテクチャ}
+
+本実装では ResNet を基盤とし，政策（Policy）と価値（Value）の
+二つのヘッドを持たせている。
+
+\begin{lstlisting}[caption={\texttt{ResNet.py} の骨子（63--177 行目，抜粋）}]
+class ResNet(nn.Module):
+    def __init__(self, block, layers):
+        super().__init__()
+        # 入力: 3ch（黄色石, 赤石, 手番情報）
+        self.conv1 = nn.Conv2d(3, self.convsize, kernel_size=(4, 4))
+
+        # 残差ブロック
+        self.layer1 = self._make_layer(block,
+                                       self.convsize, layers[0])
+
+        # --- 政策ヘッド ---
+        self.fcpol2  = nn.Linear(pol_filters * 30, 7)  # 7 列
+        self.softmax = nn.Softmax(dim=1)
+
+        # --- 価値ヘッド ---
+        self.fcval = nn.Linear(config.hiddensize, 1)
+        self.tanh  = nn.Tanh()
+\end{lstlisting}
+
+%--------------------------------------------------
+\subsection*{11.3 モンテカルロ木探索（MCTS）の実装}
+
+ニューラルネットの出力を PUCT に組み込んだ MCTS により，
+探索と学習を結合する。
+
+\begin{lstlisting}[caption={\texttt{MCTS\_NN.py} の主要部（47--199 行目，抜粋）}]
+class MCTS_NN:
+    def PUCT(self, child, cpuct):
+        """探索と活用のバランスを取る PUCT 式"""
+        return (child.Q +
+                cpuct * child.parent.proba_children[col_of_child] *
+                np.sqrt(child.parent.N) / (1 + child.N))
+
+    def eval_leaf(self, leaf):
+        """葉ノードを NN で評価"""
+        reward, P = self.player.forward(flat)
+        probs = P.detach().numpy()[0]
+        NN_q  = reward.detach().numpy()[0][0]
+
+        # ルートノードでは Dirichlet ノイズを加算
+        if self.use_dirichlet and leaf.parent is None:
+            probs = (1 - eps) * probs + eps * dirichlet_noise
+\end{lstlisting}
+
+%--------------------------------------------------
+\subsection*{11.4 高速化のためのビットボード表現}
+
+ゲーム状態を 64 ビット整数で保持し，ビット演算で
+勝利判定を高速化している。
+
+\begin{lstlisting}[caption={\texttt{Game\_bitboard.py} の勝利判定（32--191 行目，抜粋）}]
+class Game:
+    def checkwin(self, board):
+        """ビット演算による 4 連判定"""
+        # 横方向
+        h = board & (board >> 8)
+        h &= h >> 16
+
+        # 縦方向
+        v = board & (board >> 1)
+        v &= v >> 2
+
+        # 斜め（右下がり・右上がり）も同様
+        d1 = ...
+        d2 = ...
+
+        return h | v | d1 | d2
+\end{lstlisting}
+
+%--------------------------------------------------
+\subsection*{11.5 主要ハイパーパラメータ}
+
+\begin{lstlisting}[caption={\texttt{config.py} 抜粋}]
+SIM_NUMBER          = 30   # 初期 MCTS シミュレーション数
+CPUCT               = 1    # 探索定数
+res_tower           = 1    # ResNet の残差ブロック段数
+convsize            = 256  # 畳み込みフィルタ数
+threshold           = 0.51 # モデル更新閾値
+tau_zero_self_play  = 18   # 18 手目以降は貪欲に選択
+\end{lstlisting}
+
+%--------------------------------------------------
+\subsection*{11.6 まとめ}
+
+本実装は DeepMind の Alpha-Zero 論文の中核アイデア
+――\emph{自己対戦 → 学習 → 評価} というループ――
+をコネクト 4 に適用しつつ，
+
+\begin{itemize}
+  \item ビットボード表現による状態管理の高速化
+  \item 探索回数を段階的に増やす適応的スケジューリング
+\end{itemize}
+
+など，ゲーム固有の最適化を施した．  
+その結果，人間の事前知識を排したまま強力な
+コネクト 4 AI を自律的に構築できることを確認した。
+\begin{thebibliography}{99}
+
+\bibitem{silver2017}
+Silver, D.\ et~al.,
+``Mastering Chess and Shogi by Self-Play with a General Reinforcement Learning Algorithm,'' 
+\textit{arXiv:1712.01815}, 2017.
+
+\bibitem{browne2012}
+Browne, C.\ et~al.,
+``A Survey of Monte Carlo Tree Search Methods,'' 
+\textit{IEEE Transactions on Computational Intelligence and AI in Games}, 
+Vol.\ 4, No.\ 1, pp.\ 1--43, 2012.
+
+\bibitem{coulom2006}
+Coulom, R.,
+``Efficient Selectivity and Backup Operators in Monte-Carlo Tree Search,'' 
+\textit{Proceedings of the Computer Games Workshop CG\,2006}, 2006.
+
+\bibitem{schrittwieser2020}
+Schrittwieser, J.\ et~al.,
+``Mastering Atari, Go, Chess and Shogi by Planning with a Learned Model,'' 
+\textit{Nature}, Vol.\ 588, pp.\ 604--609, 2020.
+
+\bibitem{kameoka2018}
+亀岡\,嶺，
+『強化学習』，共立出版，2018.
+
+
+
+\end{document}
