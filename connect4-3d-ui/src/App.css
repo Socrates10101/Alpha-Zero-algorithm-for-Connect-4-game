@@ -1,0 +1,347 @@
+.App {
+  text-align: center;
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
+  color: white;
+  overflow: hidden;
+  position: relative;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
+/* Adjust layout when layer visualization is present */
+@media (min-width: 1200px) {
+  .App {
+    padding-right: 280px;
+  }
+}
+
+.App::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(circle at 50% 50%, transparent 0%, rgba(30, 58, 138, 0.3) 100%);
+  pointer-events: none;
+}
+
+h1 {
+  font-size: 4rem;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  margin-bottom: 1.5rem;
+  text-transform: uppercase;
+  position: relative;
+  z-index: 10;
+  
+  /* Metallic gradient effect */
+  background: linear-gradient(
+    180deg,
+    #ffffff 0%,
+    #e0e7ff 20%,
+    #c7d2fe 40%,
+    #a5b4fc 60%,
+    #818cf8 80%,
+    #6366f1 100%
+  );
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  
+  /* Multiple text shadows for depth */
+  text-shadow: 
+    0 1px 0 #c7d2fe,
+    0 2px 0 #a5b4fc,
+    0 3px 0 #818cf8,
+    0 4px 0 #6366f1,
+    0 5px 0 #4f46e5,
+    0 6px 1px rgba(0,0,0,.1),
+    0 0 5px rgba(0,0,0,.1),
+    0 1px 3px rgba(0,0,0,.3),
+    0 3px 5px rgba(0,0,0,.2),
+    0 5px 10px rgba(0,0,0,.25),
+    0 10px 10px rgba(0,0,0,.2),
+    0 20px 20px rgba(0,0,0,.15);
+  
+  /* Add pseudo-element for additional effects */
+  display: inline-block;
+  padding: 0 0.5rem;
+}
+
+h1::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.2) 0%,
+    transparent 50%
+  );
+  pointer-events: none;
+}
+
+h1::after {
+  content: '';
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #4f46e5 25%,
+    #6366f1 50%,
+    #4f46e5 75%,
+    transparent 100%
+  );
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.5);
+}
+
+/* Title container for better structure */
+.title-container {
+  position: relative;
+  padding: 2rem 0;
+  margin-bottom: 1rem;
+}
+
+.title-container::before,
+.title-container::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 4px;
+  width: 80%;
+  max-width: 600px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #6366f1 20%,
+    #818cf8 50%,
+    #6366f1 80%,
+    transparent 100%
+  );
+}
+
+.title-container::before {
+  top: 0;
+}
+
+.title-container::after {
+  bottom: 0;
+}
+
+.game-info {
+  font-size: 1.5rem;
+  margin-bottom: 2rem;
+  height: 2rem;
+}
+
+.current-player {
+  font-weight: bold;
+}
+
+.current-player.yellow {
+  color: #facc15;
+}
+
+.current-player.red {
+  color: #ef4444;
+}
+
+.winner {
+  font-size: 2rem;
+  font-weight: bold;
+  animation: pulse 1s infinite;
+}
+
+.winner.yellow {
+  color: #facc15;
+}
+
+.winner.red {
+  color: #ef4444;
+}
+
+.draw {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #60a5fa;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.reset-button {
+  margin-top: 2rem;
+  padding: 0.75rem 2rem;
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: white;
+  background-color: #3b82f6;
+  border: none;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  position: relative;
+  z-index: 10;
+}
+
+.reset-button:hover {
+  background-color: #2563eb;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+}
+
+.reset-button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.game-controls {
+  margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.mode-selector {
+  display: flex;
+  gap: 2rem;
+  font-size: 1.1rem;
+}
+
+.mode-selector label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.mode-selector input[type="radio"] {
+  width: 1.2rem;
+  height: 1.2rem;
+  cursor: pointer;
+}
+
+.ai-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 1.1rem;
+}
+
+.ai-selector select {
+  padding: 0.25rem 0.5rem;
+  font-size: 1rem;
+  border-radius: 0.25rem;
+  border: 1px solid #3b82f6;
+  background-color: white;
+  color: #1e3a8a;
+  cursor: pointer;
+}
+
+.ai-selector select:hover {
+  border-color: #2563eb;
+}
+
+.instructions {
+  font-size: 1rem;
+  margin-bottom: 1rem;
+  color: #93c5fd;
+  font-style: italic;
+}
+
+.controls-hint {
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  color: #60a5fa;
+  opacity: 0.8;
+}
+
+.game-controls-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  position: relative;
+  z-index: 10;
+}
+
+.save-info {
+  font-size: 0.9rem;
+  color: #93c5fd;
+  margin: 0;
+  opacity: 0.8;
+  font-style: italic;
+}
+
+/* Game saved notification */
+.game-saved-notification {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  box-shadow: 
+    0 4px 6px rgba(0, 0, 0, 0.1),
+    0 10px 20px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  animation: slideIn 0.5s ease-out;
+}
+
+.game-saved-notification.fade-out {
+  animation: fadeOut 0.5s ease-out forwards;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-50%) translateY(-100px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  from {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-50%) translateY(-20px);
+    opacity: 0;
+  }
+}
